@@ -1,4 +1,5 @@
 from aws_cdk import (
+    Duration,
     RemovalPolicy,
     Stack,
     aws_apigatewayv2 as _api,
@@ -115,6 +116,63 @@ class ApiUsw2(Stack):
                 _api.HttpMethod.GET
             ],
             integration = geoliteintegration
+        )
+
+    ### HEALTH FUNCTION ###
+
+        healthrole = _iam.Role(
+            self, 'healthrole',
+            assumed_by = _iam.ServicePrincipal(
+                'lambda.amazonaws.com'
+            )
+        )
+
+        healthrole.add_managed_policy(
+            _iam.ManagedPolicy.from_aws_managed_policy_name(
+                'service-role/AWSLambdaBasicExecutionRole'
+            )
+        )
+
+        healthrole.add_to_policy(
+            _iam.PolicyStatement(
+                actions = [
+                    'apigateway:GET'
+                ],
+                resources = [
+                    '*'
+                ]
+            )
+        )
+
+        health = _lambda.Function(
+            self, 'health',
+            function_name = 'health',
+            runtime = _lambda.Runtime.PYTHON_3_13,
+            architecture = _lambda.Architecture.ARM_64,
+            code = _lambda.Code.from_asset('health'),
+            handler = 'health.handler',
+            timeout = Duration.seconds(3),
+            memory_size = 128,
+            role = healthrole
+        )
+
+        healthlogs = _logs.LogGroup(
+            self, 'healthlogs',
+            log_group_name = '/aws/lambda/'+health.function_name,
+            retention = _logs.RetentionDays.ONE_WEEK,
+            removal_policy = RemovalPolicy.DESTROY
+        )
+
+        healthintegration = _integrations.HttpLambdaIntegration(
+            'healthintegration', health
+        )
+
+        api.add_routes(
+            path = '/health',
+            methods = [
+                _api.HttpMethod.GET
+            ],
+            integration = healthintegration
         )
 
     ### DNS RECORDS
