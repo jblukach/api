@@ -41,9 +41,9 @@ class ApiUsw2(Stack):
 
         acm = _acm.Certificate(
             self, 'acm',
-            domain_name = 'usw2.api.lukach.io',
+            domain_name = 'api.lukach.io',
             subject_alternative_names = [
-                'api.lukach.io'
+                'usw2.api.lukach.io'
             ],
             validation = _acm.CertificateValidation.from_dns(hostzone)
         )
@@ -52,6 +52,14 @@ class ApiUsw2(Stack):
 
         domain = _api.DomainName(
             self, 'domain',
+            domain_name = 'api.lukach.io',
+            certificate = acm,
+            endpoint_type = _api.EndpointType.REGIONAL,
+            ip_address_type = _api.IpAddressType.DUAL_STACK
+        )
+
+        regional = _api.DomainName(
+            self, 'regional',
             domain_name = 'usw2.api.lukach.io',
             certificate = acm,
             endpoint_type = _api.EndpointType.REGIONAL,
@@ -90,6 +98,12 @@ class ApiUsw2(Stack):
                 domain_name = domain
             ),
             ip_address_type = _api.IpAddressType.DUAL_STACK
+        )
+
+        regionmap = _api.ApiMapping(
+            self, 'regionmap',
+            api = api,
+            domain_name = regional
         )
 
     ### GEOLITE FUNCTION ###
@@ -183,8 +197,8 @@ class ApiUsw2(Stack):
             record_name = 'usw2.api.lukach.io',
             target = _route53.RecordTarget.from_alias(
                 _r53targets.ApiGatewayv2DomainProperties(
-                    domain.regional_domain_name,
-                    domain.regional_hosted_zone_id
+                    regional.regional_domain_name,
+                    regional.regional_hosted_zone_id
                 )
             )
         )
@@ -195,8 +209,27 @@ class ApiUsw2(Stack):
             record_name = 'usw2.api.lukach.io',
             target = _route53.RecordTarget.from_alias(
                 _r53targets.ApiGatewayv2DomainProperties(
-                    domain.regional_domain_name,
-                    domain.regional_hosted_zone_id
+                    regional.regional_domain_name,
+                    regional.regional_hosted_zone_id
                 )
             )
+        )
+
+    #### HEALTH CHECK ###
+
+        healthcheck = _route53.HealthCheck(
+            self, 'healthcheck',
+            type = _route53.HealthCheckType.HTTPS,
+            fqdn = 'usw2.api.lukach.io',
+            port = 443,
+            resource_path = '/health',
+            failure_threshold = 3,
+            request_interval = Duration.seconds(30),
+            enable_sni = True,
+            regions = [
+                'us-east-1',
+                'us-west-2',
+                'eu-west-1',
+                'ap-southeast-2'
+            ]
         )

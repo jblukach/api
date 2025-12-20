@@ -13,7 +13,7 @@ ApiStack(
     app, "ApiStack",
     env = cdk.Environment(
         account = os.getenv('CDK_DEFAULT_ACCOUNT'),
-        region = 'us-east-1'
+        region = 'us-east-2'
     ),
     synthesizer = cdk.DefaultStackSynthesizer(
         qualifier = 'lukach'
