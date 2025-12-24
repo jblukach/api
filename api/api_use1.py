@@ -139,6 +139,53 @@ class ApiUse1(Stack):
             domain_name = regional
         )
 
+    ### CARETAKER DNS FUNCTION ###
+
+        caretakeraccount = _ssm.StringParameter.from_string_parameter_attributes(
+            self, 'caretakeraccount',
+            parameter_name = '/account/caretaker'
+        )
+
+        caretakerdns = _lambda.Function.from_function_attributes(
+            self, 'caretakerdns',
+            function_arn = 'arn:aws:lambda:us-east-1:'+caretakeraccount.string_value+':function:dns',
+            same_environment = False,
+            skip_permissions = True
+        )
+
+        caretakerdnsintegration = _integrations.HttpLambdaIntegration(
+            'caretakerdnsintegration', caretakerdns
+        )
+
+        api.add_routes(
+            path = '/osint/dns',
+            methods = [
+                _api.HttpMethod.GET
+            ],
+            integration = caretakerdnsintegration
+        )
+
+    ### CARETAKER IP FUNCTION ###
+
+        caretakerip = _lambda.Function.from_function_attributes(
+            self, 'caretakerip',
+            function_arn = 'arn:aws:lambda:us-east-1:'+caretakeraccount.string_value+':function:ip',
+            same_environment = False,
+            skip_permissions = True
+        )
+
+        caretakeripintegration = _integrations.HttpLambdaIntegration(
+            'caretakeripintegration', caretakerip
+        )
+
+        api.add_routes(
+            path = '/osint/ip',
+            methods = [
+                _api.HttpMethod.GET
+            ],
+            integration = caretakeripintegration
+        )
+
     ### GEOLITE FUNCTION ###
 
         geoliteaccount = _ssm.StringParameter.from_string_parameter_attributes(
