@@ -139,12 +139,56 @@ class ApiUse1(Stack):
             domain_name = regional
         )
 
-    ### CARETAKER DNS FUNCTION ###
+    ### CARETAKER ACCOUNT ###
 
         caretakeraccount = _ssm.StringParameter.from_string_parameter_attributes(
             self, 'caretakeraccount',
             parameter_name = '/account/caretaker'
         )
+
+    ### CARETAKER ASN FUNCTION ###
+
+        caretakerasn = _lambda.Function.from_function_attributes(
+            self, 'caretakerasn',
+            function_arn = 'arn:aws:lambda:us-east-1:'+caretakeraccount.string_value+':function:asn',
+            same_environment = False,
+            skip_permissions = True
+        )
+
+        caretakerasnintegration = _integrations.HttpLambdaIntegration(
+            'caretakerasnintegration', caretakerasn
+        )
+
+        api.add_routes(
+            path = '/osint/asn',
+            methods = [
+                _api.HttpMethod.GET
+            ],
+            integration = caretakerasnintegration
+        )
+
+    ### CARETAKER CO FUNCTION ###
+
+        caretakerco = _lambda.Function.from_function_attributes(
+            self, 'caretakerco',
+            function_arn = 'arn:aws:lambda:us-east-1:'+caretakeraccount.string_value+':function:co',
+            same_environment = False,
+            skip_permissions = True
+        )
+
+        caretakercointegration = _integrations.HttpLambdaIntegration(
+            'caretakercointegration', caretakerco
+        )
+
+        api.add_routes(
+            path = '/osint/co',
+            methods = [
+                _api.HttpMethod.GET
+            ],
+            integration = caretakercointegration
+        )
+
+    ### CARETAKER DNS FUNCTION ###
 
         caretakerdns = _lambda.Function.from_function_attributes(
             self, 'caretakerdns',
@@ -184,6 +228,27 @@ class ApiUse1(Stack):
                 _api.HttpMethod.GET
             ],
             integration = caretakeripintegration
+        )
+
+    ### CARETAKER ST FUNCTION ###
+
+        caretakerst = _lambda.Function.from_function_attributes(
+            self, 'caretakerst',
+            function_arn = 'arn:aws:lambda:us-east-1:'+caretakeraccount.string_value+':function:st',
+            same_environment = False,
+            skip_permissions = True
+        )
+
+        caretakerstintegration = _integrations.HttpLambdaIntegration(
+            'caretakerstintegration', caretakerst
+        )
+
+        api.add_routes(
+            path = '/osint/st',
+            methods = [
+                _api.HttpMethod.GET
+            ],
+            integration = caretakerstintegration
         )
 
     ### GEOLITE FUNCTION ###
