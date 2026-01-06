@@ -301,6 +301,32 @@ class ApiUsw2(Stack):
             integration = healthintegration
         )
 
+    ### IPLOCATION FUNCTION ###
+
+        iplocationaccount = _ssm.StringParameter.from_string_parameter_attributes(
+            self, 'iplocationaccount',
+            parameter_name = '/account/iplocation'
+        )
+
+        iplocation = _lambda.Function.from_function_attributes(
+            self, 'iplocation',
+            function_arn = 'arn:aws:lambda:us-west-2:'+iplocationaccount.string_value+':function:lookup',
+            same_environment = False,
+            skip_permissions = True
+        )
+
+        iplocationintegration = _integrations.HttpLambdaIntegration(
+            'iplocationintegration', iplocation
+        )
+
+        api.add_routes(
+            path = '/geo/ip2location',
+            methods = [
+                _api.HttpMethod.GET
+            ],
+            integration = iplocationintegration
+        )
+
     ### DNS RECORDS
 
         ipv4dns = _route53.ARecord(
