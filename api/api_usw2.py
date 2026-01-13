@@ -218,6 +218,32 @@ class ApiUsw2(Stack):
             integration = caretakerstintegration
         )
 
+    ### DISTILLERY FUNCTION ###
+
+        distilleryaccount = _ssm.StringParameter.from_string_parameter_attributes(
+            self, 'distilleryaccount',
+            parameter_name = '/account/distillery'
+        )
+
+        distillery = _lambda.Function.from_function_attributes(
+            self, 'distillery',
+            function_arn = 'arn:aws:lambda:us-east-1:'+distilleryaccount.string_value+':function:cidr',
+            same_environment = False,
+            skip_permissions = True
+        )
+
+        distilleryintegration = _integrations.HttpLambdaIntegration(
+            'distilleryintegration', distillery
+        )
+
+        api.add_routes(
+            path = '/net/cidr',
+            methods = [
+                _api.HttpMethod.GET
+            ],
+            integration = distilleryintegration
+        )
+
     ### GEOLITE FUNCTION ###
 
         geoliteaccount = _ssm.StringParameter.from_string_parameter_attributes(
