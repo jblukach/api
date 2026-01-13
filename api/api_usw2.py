@@ -227,7 +227,7 @@ class ApiUsw2(Stack):
 
         distillery = _lambda.Function.from_function_attributes(
             self, 'distillery',
-            function_arn = 'arn:aws:lambda:us-east-1:'+distilleryaccount.string_value+':function:cidr',
+            function_arn = 'arn:aws:lambda:us-west-2:'+distilleryaccount.string_value+':function:cidr',
             same_environment = False,
             skip_permissions = True
         )
