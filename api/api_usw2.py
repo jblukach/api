@@ -327,6 +327,32 @@ class ApiUsw2(Stack):
             integration = healthintegration
         )
 
+    ### IPINFO FUNCTION ###
+
+        ipinfoaccount = _ssm.StringParameter.from_string_parameter_attributes(
+            self, 'ipinfoaccount',
+            parameter_name = '/account/ipinfo'
+        )
+
+        ipinfo = _lambda.Function.from_function_attributes(
+            self, 'ipinfo',
+            function_arn = 'arn:aws:lambda:us-west-2:'+ipinfoaccount.string_value+':function:find',
+            same_environment = False,
+            skip_permissions = True
+        )
+
+        ipinfointegration = _integrations.HttpLambdaIntegration(
+            'ipinfointegration', ipinfo
+        )
+
+        api.add_routes(
+            path = '/geo/ipinfo',
+            methods = [
+                _api.HttpMethod.GET
+            ],
+            integration = ipinfointegration
+        )
+
     ### IPLOCATION FUNCTION ###
 
         iplocationaccount = _ssm.StringParameter.from_string_parameter_attributes(
