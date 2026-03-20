@@ -468,6 +468,35 @@ class ApiUsw2(Stack):
             integration = healthintegration
         )
 
+    ### LUNKER ACCOUNT ###
+
+        lunkeraccount = _ssm.StringParameter.from_string_parameter_attributes(
+            self, 'lunkeraccount',
+            parameter_name = '/account/lunker'
+        )
+
+    ### LUNKER HOME FUNCTION ###
+
+        lunkerhome = _lambda.Function.from_function_attributes(
+            self, 'lunkerhome',
+            function_arn = 'arn:aws:lambda:us-west-2:'+lunkeraccount.string_value+':function:home',
+            same_environment = False,
+            skip_permissions = True
+        )
+
+        lunkerhomeintegration = _integrations.HttpLambdaIntegration(
+            'lunkerhomeintegration', lunkerhome
+        )
+
+        api.add_routes(
+            path = '/home',
+            methods = [
+                _api.HttpMethod.GET
+            ],
+            integration = lunkerhomeintegration,
+            authorizer = lambdaauthorizer
+        )
+
     ### IPINFO FUNCTION ###
 
         ipinfoaccount = _ssm.StringParameter.from_string_parameter_attributes(
