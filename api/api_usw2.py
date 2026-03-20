@@ -491,7 +491,8 @@ class ApiUsw2(Stack):
         api.add_routes(
             path = '/home',
             methods = [
-                _api.HttpMethod.GET
+                _api.HttpMethod.GET,
+                _api.HttpMethod.POST
             ],
             integration = lunkerhomeintegration,
             authorizer = lambdaauthorizer
