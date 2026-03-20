@@ -1,8 +1,11 @@
+import datetime
+
 from aws_cdk import (
     Duration,
     RemovalPolicy,
     Stack,
     aws_apigatewayv2 as _api,
+    aws_apigatewayv2_authorizers as _authorizers,
     aws_apigatewayv2_integrations as _integrations,
     aws_certificatemanager as _acm,
     aws_iam as _iam,
@@ -10,6 +13,7 @@ from aws_cdk import (
     aws_logs as _logs,
     aws_route53 as _route53,
     aws_route53_targets as _r53targets,
+    aws_s3 as _s3,
     aws_ssm as _ssm
 )
 
@@ -19,6 +23,39 @@ class ApiUsw2(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        account = Stack.of(self).account
+        region = Stack.of(self).region
+
+        year = datetime.datetime.now().strftime('%Y')
+        month = datetime.datetime.now().strftime('%m')
+        day = datetime.datetime.now().strftime('%d')
+
+    ### S3 BUCKETS ###
+
+        bucket = _s3.Bucket.from_bucket_name(
+            self, 'bucket',
+            bucket_name = 'packages-usw2-lukach-io'
+        )
+
+    ### LAMBDA LAYER ###
+
+        requests = _lambda.LayerVersion(
+            self, 'requests',
+            layer_version_name = 'requests',
+            description = str(year)+'-'+str(month)+'-'+str(day)+' deployment',
+            code = _lambda.Code.from_bucket(
+                bucket = bucket,
+                key = 'requests.zip'
+            ),
+            compatible_architectures = [
+                _lambda.Architecture.ARM_64
+            ],
+            compatible_runtimes = [
+                _lambda.Runtime.PYTHON_3_13
+            ],
+            removal_policy = RemovalPolicy.DESTROY
+        )
 
     ### HOSTZONE ###
 
@@ -104,6 +141,61 @@ class ApiUsw2(Stack):
             self, 'regionmap',
             api = api,
             domain_name = regional
+        )
+
+    ### AUTHORIZER LAMBDA FUNCTION ###
+
+        authorizerrole = _iam.Role(
+            self, 'authorizerrole',
+            assumed_by = _iam.ServicePrincipal(
+                'lambda.amazonaws.com'
+            )
+        )
+
+        authorizerrole.add_managed_policy(
+            _iam.ManagedPolicy.from_aws_managed_policy_name(
+                'service-role/AWSLambdaBasicExecutionRole'
+            )
+        )
+
+        authorizerrole.add_to_policy(
+            _iam.PolicyStatement(
+                actions = [
+                    'apigateway:GET'
+                ],
+                resources = [
+                    '*'
+                ]
+            )
+        )
+
+        authorizer = _lambda.Function(
+            self, 'authorizer',
+            runtime = _lambda.Runtime.PYTHON_3_13,
+            architecture = _lambda.Architecture.ARM_64,
+            code = _lambda.Code.from_asset('authorizer'),
+            handler = 'authorizerusw2.handler',
+            timeout = Duration.seconds(7),
+            memory_size = 128,
+            role = authorizerrole,
+            layers = [
+                requests
+            ]
+        )
+
+        authorizerlogs = _logs.LogGroup(
+            self, 'authorizerlogs',
+            log_group_name = '/aws/lambda/'+authorizer.function_name,
+            retention = _logs.RetentionDays.THIRTEEN_MONTHS,
+            removal_policy = RemovalPolicy.DESTROY
+        )
+
+        lambdaauthorizer = _authorizers.HttpLambdaAuthorizer(
+            'lambdaauthorizer',
+            authorizer,
+            response_types = [
+                _authorizers.HttpLambdaResponseType.SIMPLE
+            ]
         )
 
     ### CARETAKER ACCOUNT ###
@@ -216,6 +308,55 @@ class ApiUsw2(Stack):
                 _api.HttpMethod.GET
             ],
             integration = caretakerstintegration
+        )
+
+    ### COGNITO ACCOUNT ###
+
+        cognitoaccount = _ssm.StringParameter.from_string_parameter_attributes(
+            self, 'cognitoaccount',
+            parameter_name = '/account/cognito'
+        )
+
+    ### COGNITO AUTH FUNCTION ###
+
+        cognitoauth = _lambda.Function.from_function_attributes(
+            self, 'cognitoauth',
+            function_arn = 'arn:aws:lambda:us-west-2:'+cognitoaccount.string_value+':function:auth',
+            same_environment = False,
+            skip_permissions = True
+        )
+
+        cognitoauthintegration = _integrations.HttpLambdaIntegration(
+            'cognitoauthintegration', cognitoauth
+        )
+
+        api.add_routes(
+            path = '/auth',
+            methods = [
+                _api.HttpMethod.GET
+            ],
+            integration = cognitoauthintegration
+        )
+
+    ### COGNITO ROOT FUNCTION ###
+
+        cognitoroot = _lambda.Function.from_function_attributes(
+            self, 'cognitoroot',
+            function_arn = 'arn:aws:lambda:us-west-2:'+cognitoaccount.string_value+':function:root',
+            same_environment = False,
+            skip_permissions = True
+        )
+
+        cognitorootintegration = _integrations.HttpLambdaIntegration(
+            'cognitorootintegration', cognitoroot
+        )
+
+        api.add_routes(
+            path = '/',
+            methods = [
+                _api.HttpMethod.GET
+            ],
+            integration = cognitorootintegration
         )
 
     ### DISTILLERY FUNCTION ###
