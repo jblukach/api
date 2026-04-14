@@ -205,7 +205,7 @@ class ApiUse1(Stack):
             architecture = _lambda.Architecture.ARM_64,
             code = _lambda.Code.from_asset('authorizer'),
             handler = 'authorizeruse1.handler',
-            timeout = Duration.seconds(7),
+            timeout = Duration.seconds(12),
             memory_size = 128,
             role = authorizerrole,
             layers = [
