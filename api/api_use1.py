@@ -1,11 +1,8 @@
-import datetime
-
 from aws_cdk import (
     Duration,
     RemovalPolicy,
     Stack,
     aws_apigatewayv2 as _api,
-    aws_apigatewayv2_authorizers as _authorizers,
     aws_apigatewayv2_integrations as _integrations,
     aws_certificatemanager as _acm,
     aws_iam as _iam,
@@ -13,7 +10,6 @@ from aws_cdk import (
     aws_logs as _logs,
     aws_route53 as _route53,
     aws_route53_targets as _r53targets,
-    aws_s3 as _s3,
     aws_ssm as _ssm
 )
 
@@ -26,36 +22,6 @@ class ApiUse1(Stack):
 
         account = Stack.of(self).account
         region = Stack.of(self).region
-
-        year = datetime.datetime.now().strftime('%Y')
-        month = datetime.datetime.now().strftime('%m')
-        day = datetime.datetime.now().strftime('%d')
-
-    ### S3 BUCKETS ###
-
-        bucket = _s3.Bucket.from_bucket_name(
-            self, 'bucket',
-            bucket_name = 'packages-use1-lukach-io'
-        )
-
-    ### LAMBDA LAYER ###
-
-        requests = _lambda.LayerVersion(
-            self, 'requests',
-            layer_version_name = 'requests',
-            description = str(year)+'-'+str(month)+'-'+str(day)+' deployment',
-            code = _lambda.Code.from_bucket(
-                bucket = bucket,
-                key = 'requests.zip'
-            ),
-            compatible_architectures = [
-                _lambda.Architecture.ARM_64
-            ],
-            compatible_runtimes = [
-                _lambda.Runtime.PYTHON_3_13
-            ],
-            removal_policy = RemovalPolicy.DESTROY
-        )
 
     ### HOSTZONE ###
 
@@ -173,222 +139,6 @@ class ApiUse1(Stack):
             domain_name = regional
         )
 
-    ### AUTHORIZER LAMBDA FUNCTION ###
-
-        authorizerrole = _iam.Role(
-            self, 'authorizerrole',
-            assumed_by = _iam.ServicePrincipal(
-                'lambda.amazonaws.com'
-            )
-        )
-
-        authorizerrole.add_managed_policy(
-            _iam.ManagedPolicy.from_aws_managed_policy_name(
-                'service-role/AWSLambdaBasicExecutionRole'
-            )
-        )
-
-        authorizerrole.add_to_policy(
-            _iam.PolicyStatement(
-                actions = [
-                    'apigateway:GET'
-                ],
-                resources = [
-                    '*'
-                ]
-            )
-        )
-
-        authorizer = _lambda.Function(
-            self, 'authorizer',
-            runtime = _lambda.Runtime.PYTHON_3_13,
-            architecture = _lambda.Architecture.ARM_64,
-            code = _lambda.Code.from_asset('authorizer'),
-            handler = 'authorizeruse1.handler',
-            timeout = Duration.seconds(30),
-            memory_size = 256,
-            role = authorizerrole,
-            layers = [
-                requests
-            ]
-        )
-
-        authorizerlogs = _logs.LogGroup(
-            self, 'authorizerlogs',
-            log_group_name = '/aws/lambda/'+authorizer.function_name,
-            retention = _logs.RetentionDays.THIRTEEN_MONTHS,
-            removal_policy = RemovalPolicy.DESTROY
-        )
-
-        lambdaauthorizer = _authorizers.HttpLambdaAuthorizer(
-            'lambdaauthorizer',
-            authorizer,
-            response_types = [
-                _authorizers.HttpLambdaResponseType.SIMPLE
-            ]
-        )
-
-    ### CARETAKER ACCOUNT ###
-
-        caretakeraccount = _ssm.StringParameter.from_string_parameter_attributes(
-            self, 'caretakeraccount',
-            parameter_name = '/account/caretaker'
-        )
-
-    ### CARETAKER ASN FUNCTION ###
-
-        caretakerasn = _lambda.Function.from_function_attributes(
-            self, 'caretakerasn',
-            function_arn = 'arn:aws:lambda:us-east-1:'+caretakeraccount.string_value+':function:asn',
-            same_environment = False,
-            skip_permissions = True
-        )
-
-        caretakerasnintegration = _integrations.HttpLambdaIntegration(
-            'caretakerasnintegration', caretakerasn
-        )
-
-        api.add_routes(
-            path = '/osint/asn',
-            methods = [
-                _api.HttpMethod.GET
-            ],
-            integration = caretakerasnintegration
-        )
-
-    ### CARETAKER CO FUNCTION ###
-
-        caretakerco = _lambda.Function.from_function_attributes(
-            self, 'caretakerco',
-            function_arn = 'arn:aws:lambda:us-east-1:'+caretakeraccount.string_value+':function:co',
-            same_environment = False,
-            skip_permissions = True
-        )
-
-        caretakercointegration = _integrations.HttpLambdaIntegration(
-            'caretakercointegration', caretakerco
-        )
-
-        api.add_routes(
-            path = '/osint/co',
-            methods = [
-                _api.HttpMethod.GET
-            ],
-            integration = caretakercointegration
-        )
-
-    ### CARETAKER DNS FUNCTION ###
-
-        caretakerdns = _lambda.Function.from_function_attributes(
-            self, 'caretakerdns',
-            function_arn = 'arn:aws:lambda:us-east-1:'+caretakeraccount.string_value+':function:dns',
-            same_environment = False,
-            skip_permissions = True
-        )
-
-        caretakerdnsintegration = _integrations.HttpLambdaIntegration(
-            'caretakerdnsintegration', caretakerdns
-        )
-
-        api.add_routes(
-            path = '/osint/dns',
-            methods = [
-                _api.HttpMethod.GET
-            ],
-            integration = caretakerdnsintegration
-        )
-
-    ### CARETAKER IP FUNCTION ###
-
-        caretakerip = _lambda.Function.from_function_attributes(
-            self, 'caretakerip',
-            function_arn = 'arn:aws:lambda:us-east-1:'+caretakeraccount.string_value+':function:ip',
-            same_environment = False,
-            skip_permissions = True
-        )
-
-        caretakeripintegration = _integrations.HttpLambdaIntegration(
-            'caretakeripintegration', caretakerip
-        )
-
-        api.add_routes(
-            path = '/osint/ip',
-            methods = [
-                _api.HttpMethod.GET
-            ],
-            integration = caretakeripintegration
-        )
-
-    ### CARETAKER ST FUNCTION ###
-
-        caretakerst = _lambda.Function.from_function_attributes(
-            self, 'caretakerst',
-            function_arn = 'arn:aws:lambda:us-east-1:'+caretakeraccount.string_value+':function:st',
-            same_environment = False,
-            skip_permissions = True
-        )
-
-        caretakerstintegration = _integrations.HttpLambdaIntegration(
-            'caretakerstintegration', caretakerst
-        )
-
-        api.add_routes(
-            path = '/osint/st',
-            methods = [
-                _api.HttpMethod.GET
-            ],
-            integration = caretakerstintegration
-        )
-
-    ### COGNITO ACCOUNT ###
-
-        cognitoaccount = _ssm.StringParameter.from_string_parameter_attributes(
-            self, 'cognitoaccount',
-            parameter_name = '/account/cognito'
-        )
-
-    ### COGNITO AUTH FUNCTION ###
-
-        cognitoauth = _lambda.Function.from_function_attributes(
-            self, 'cognitoauth',
-            function_arn = 'arn:aws:lambda:us-east-1:'+cognitoaccount.string_value+':function:auth',
-            same_environment = False,
-            skip_permissions = True
-        )
-
-        cognitoauthintegration = _integrations.HttpLambdaIntegration(
-            'cognitoauthintegration', cognitoauth
-        )
-
-        api.add_routes(
-            path = '/auth',
-            methods = [
-                _api.HttpMethod.GET
-            ],
-            integration = cognitoauthintegration
-        )
-
-    ### COGNITO ROOT FUNCTION ###
-
-        cognitoroot = _lambda.Function.from_function_attributes(
-            self, 'cognitoroot',
-            function_arn = 'arn:aws:lambda:us-east-1:'+cognitoaccount.string_value+':function:root',
-            same_environment = False,
-            skip_permissions = True
-        )
-
-        cognitorootintegration = _integrations.HttpLambdaIntegration(
-            'cognitorootintegration', cognitoroot
-        )
-
-        api.add_routes(
-            path = '/',
-            methods = [
-                _api.HttpMethod.GET
-            ],
-            integration = cognitorootintegration
-        )
-
     ### DISTILLERY FUNCTION ###
 
         distilleryaccount = _ssm.StringParameter.from_string_parameter_attributes(
@@ -496,36 +246,6 @@ class ApiUse1(Stack):
                 _api.HttpMethod.GET
             ],
             integration = healthintegration
-        )
-
-    ### LUNKER ACCOUNT ###
-
-        lunkeraccount = _ssm.StringParameter.from_string_parameter_attributes(
-            self, 'lunkeraccount',
-            parameter_name = '/account/lunker'
-        )
-
-    ### LUNKER HOME FUNCTION ###
-
-        lunkerhome = _lambda.Function.from_function_attributes(
-            self, 'lunkerhome',
-            function_arn = 'arn:aws:lambda:us-east-1:'+lunkeraccount.string_value+':function:home',
-            same_environment = False,
-            skip_permissions = True
-        )
-
-        lunkerhomeintegration = _integrations.HttpLambdaIntegration(
-            'lunkerhomeintegration', lunkerhome
-        )
-
-        api.add_routes(
-            path = '/home',
-            methods = [
-                _api.HttpMethod.GET,
-                _api.HttpMethod.POST
-            ],
-            integration = lunkerhomeintegration,
-            authorizer = lambdaauthorizer
         )
 
     ### IPINFO FUNCTION ###
