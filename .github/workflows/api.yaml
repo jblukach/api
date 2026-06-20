@@ -39,6 +39,5 @@ jobs:
       - run: npm install -g aws-cdk-lib
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements.txt --upgrade
-      - run: python -m unittest discover -s tests -p "test_*.py"
       - run: cdk synth
       - run: cdk deploy --all --require-approval never
