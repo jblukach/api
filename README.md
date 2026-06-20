@@ -1,181 +1,116 @@
-# Centralized Network Ingress with Amazon API Gateway
+# API Ingress on AWS CDK
 
-This repository provides a **centralized network ingress layer** built on **Amazon API Gateway**, designed for highly available, multi-region AWS architectures. It enables secure, scalable, and resilient traffic routing across regions and accounts.
+This repository deploys a single-region API ingress in us-east-2 using Amazon API Gateway HTTP API with a custom domain and dual-stack DNS.
 
----
+## Current Architecture
 
-## 📖 Quick Overview
+The active data-plane region is us-east-2.
 
-Think of this as a **global front door for your applications**. Instead of having a single entry point that goes down or gets slow, you have multiple entry points in different regions around the world. If one region has problems, traffic automatically gets sent to another region.
+Stack to region mapping in code:
 
----
+- ApiStack: us-east-2
+- ApiUse1: us-east-1
+- ApiUse2: us-east-2
 
-## Features & Capabilities
+- ApiStack in us-east-2
+   - Creates GitHub OIDC/IAM deployment role and related permissions.
+- ApiUse2 in us-east-2
+   - Creates API Gateway HTTP API, ACM certificate, domain mapping, and Route53 A and AAAA alias records for api.lukach.io.
+   - Integrates route /geo with Lambda function geo-search in us-east-2.
+- ApiUse1 in us-east-1
+   - Supporting stack only: creates public hosted zone and stores hosted zone ID in SSM parameter /route53/apilukachio.
+   - ApiUse2 reads that parameter cross-region from us-east-1.
 
-### 🌍 Multi-Region
-- Deploy API Gateway endpoints across multiple AWS regions  
-- Reduce latency and eliminate single-region failure scenarios  
-- Support active/active or active/passive regional traffic patterns  
+This means request serving is single region us-east-2, while DNS source data is provisioned in us-east-1.
 
-### 🛡 High Availability
-- Leverages Amazon API Gateway’s fully managed, fault-tolerant service  
-- No infrastructure management required  
-- Automatically scales to meet traffic demand  
+## API Endpoint
 
-### 🌐 Dual-Stack (IPv4 & IPv6)
-- Native support for both IPv4 and IPv6 clients  
-- Ensures compatibility with modern and future network requirements  
+- Base domain: api.lukach.io
+- Routes:
+   - GET /geo
+   - POST /geo
+   - GET /geo/{ip}
 
-### 🔁 Cross-Account Lambda Integration
-- API Gateway can invoke Lambda functions across multiple AWS accounts  
-- Enables strong account isolation and centralized ingress governance  
-- Ideal for platform teams supporting multiple application teams  
+`/geo` supports query-string lookups (for example `?ip=1.1.1.1`). `/geo/{ip}` is a GET path-parameter lookup.
 
-### ❤️ Health Checks
-- Continuous health checks for backend services  
-- Automatically detects unhealthy regions or endpoints  
-- Prevents routing traffic to failing components  
+Example:
 
-### 🔀 Route53 Failover
-- Uses Amazon Route53 failover routing policies  
-- Automatically redirects traffic during regional outages  
-- Supports disaster recovery and business continuity objectives  
+      curl https://api.lukach.io/geo
 
----
+      curl "https://api.lukach.io/geo?ip=1.1.1.1"
 
-## Architecture Overview
+      curl https://api.lukach.io/geo/1.1.1.1
 
-The architecture consists of:
-- **Amazon API Gateway** as the centralized ingress point  
-- **AWS Lambda** backends deployed across multiple regions and accounts  
-- **IAM cross-account permissions** for secure invocation  
-- **Amazon Route53** for DNS-based routing and regional failover  
-- **Health checks** to ensure traffic is sent only to healthy regions  
+      curl "https://api.lukach.io/geo/2001%3Adb8%3A%3A1"
 
-This approach provides a resilient, scalable, and enterprise-ready ingress solution for AWS workloads.
+## IPv4 and IPv6
 
----
+The code configures dual-stack end to end:
 
-## Use Cases
+- API Gateway domain uses DUAL_STACK IP address type.
+- Route53 publishes both A and AAAA alias records for api.lukach.io.
+- Both route forms work for IPv4 and IPv6. For path-style IPv6, URL-encode colons (`:`).
 
-- Centralized ingress for multi-account AWS environments  
-- Global APIs requiring high availability and failover  
-- Platform teams providing shared networking services  
-- Disaster recovery and multi-region resilience strategies  
+## Prerequisites
 
----
+- AWS account with permissions to deploy CDK stacks.
+- Python 3.12 or newer.
+- AWS CDK CLI.
+- Authenticated AWS profile for deployment.
 
-## API Endpoints
+## Deploy
 
-### Main Endpoints
+Account resolution behavior (from app.py):
 
-| Region | Endpoint | Purpose |
-|--------|----------|---------|
-| **Primary** | `api.lukach.io` | Main API gateway — routes to the healthy region |
-| **US East 1** | `use1.api.lukach.io` | Regional endpoint (N. Virginia) |
-| **US West 2** | `usw2.api.lukach.io` | Regional endpoint (Oregon) |
+- CDK_DEFAULT_ACCOUNT
+- CDK_DEPLOY_ACCOUNT
+- AWS_ACCOUNT_ID
+- CDK context account (use -c account=<aws-account-id>)
 
-### Available Routes
+If none of these are set, synth/deploy fails fast with an explicit error.
 
-#### 1. Health Check
-- **Endpoint:** `GET /health`
-- **Purpose:** Check if the API is responding and see which region you're connected to
-- **Response:** Returns the AWS region (e.g., `us-east-1`, `us-west-2`)
-- **Example:**
-  ```bash
-  curl https://api.lukach.io/health
-  ```
+1. Install dependencies.
 
-#### 2. Authorization/Authentication
-The API includes built-in security through OAuth2 integration:
-- All requests are validated through an authorization layer
-- Users must provide an Authorization header with a valid OAuth2 token
-- The authorizer verifies user information including email and account status
+          pip install -r requirements.txt
 
----
+2. Authenticate profile.
 
-## Getting Started
+          aws sso login --profile <your-profile>
 
-### Prerequisites
+3. Synthesize.
 
-- An AWS Account (with appropriate permissions)
-- Python 3.13+
-- AWS CDK CLI installed
-- Git
+          cdk synth -c account=<aws-account-id>
 
-### Installation & Deployment
+4. Review changes.
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/jblukach/api.git
-   cd api
-   ```
+          cdk diff ApiStack ApiUse1 ApiUse2 --profile <your-profile> -c account=<aws-account-id>
 
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+5. Deploy.
 
-3. **Deploy the infrastructure:**
-   ```bash
-   cdk deploy --all
-   ```
-
-4. **Verify deployment:**
-   ```bash
-   curl https://api.lukach.io/health
-   ```
-
----
-
-## 🔧 How It Works (In Plain English)
-
-1. **Request comes in** → User sends a request to `api.lukach.io`
-2. **Route53 checks health** → AWS checks if regions are healthy
-3. **Smart routing** → Traffic goes to the closest healthy region
-4. **Authentication check** → The API verifies you have permission
-5. **Response sent back** → Your request gets processed and you get a response
-
-If a region goes down, Route53 automatically sends traffic to another region without you having to do anything.
-
----
-
-## Project Structure
-
-```
-api/
-├── api/                    # API Gateway definitions for each region
-│   ├── api_stack.py       # CI/CD permissions setup (GitHub Actions)
-│   ├── api_use1.py        # US East 1 region configuration
-│   └── api_usw2.py        # US West 2 region configuration
-├── authorizer/            # Security/authentication logic
-│   ├── authorizeruse1.py  # Authorization for US East 1
-│   └── authorizerusw2.py  # Authorization for US West 2
-├── health/                # Health check endpoint
-│   └── health.py          # Returns current region status
-├── app.py                 # Main CDK application
-├── cdk.json              # Configuration file
-└── requirements.txt       # Python dependencies
-```
-
----
+          cdk deploy --all --require-approval never --profile <your-profile> -c account=<aws-account-id>
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| **"Connection refused"** | The API might be down. Try another regional endpoint or wait a few moments. |
-| **"Unauthorized" error** | Your OAuth2 token is invalid or expired. Please re-authenticate. |
-| **"Slow response"** | You might be connecting to a distant region. Check which region is responding. |
-| **Regional endpoint fails but main endpoint works** | That region is temporarily unhealthy. Traffic is being routed to another region. |
+- Unable to resolve AWS account to use
+   - Pass account context explicitly and use a valid profile:
 
----
+            cdk synth --profile <your-profile> -c account=<aws-account-id>
 
-## Support & Questions
+- Hosted zone parameter region mismatch
+   - Parameter /route53/apilukachio is intentionally read from us-east-1 by ApiUse2.
 
-For issues, feature requests, or questions:
-- Open an issue on [GitHub](https://github.com/jblukach/api/issues)
-- Check the [AWS Documentation](https://docs.aws.amazon.com/apigateway/)
-- Review AWS Route53 failover policies for advanced configurations
+- Dual-stack check
+   - Confirm API Gateway domain is DUAL_STACK and Route53 has both A and AAAA alias records.
 
----
+## Project Structure
+
+      api/
+      ├── api/
+      │   ├── api_stack.py
+      │   ├── api_use1.py
+      │   └── api_use2.py
+      ├── .github/workflows/
+      │   └── api.yaml
+      ├── app.py
+      ├── cdk.json
+      └── requirements.txt
