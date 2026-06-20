@@ -31,15 +31,26 @@ This means request serving is single region us-east-2, while DNS source data is 
    - POST /geo
    - GET /geo/{ip}
 
-`/geo` supports query-string lookups (for example `?ip=1.1.1.1`). `/geo/{ip}` is a GET path-parameter lookup.
+`/geo` accepts several search inputs:
+
+- GET /geo with no IP uses the caller source IP.
+- GET /geo supports query-string lookups with `ip`, `ipAddress`, or `query`.
+- POST /geo supports a JSON body with `ip`, `ipAddress`, `query`, or `ips`.
+- GET /geo/{ip} supports a path-parameter lookup.
+- Repeated query params and comma-separated values are both accepted.
+- Bulk requests are capped by `MAX_IPS_PER_REQUEST`, which defaults to 300.
 
 Example:
 
       curl https://api.lukach.io/geo
 
-      curl "https://api.lukach.io/geo?ip=1.1.1.1"
+      curl "https://api.lukach.io/geo?ip=192.0.2.1&ip=198.51.100.111&ip=2001%3Adb8%3A%3A1"
 
-      curl https://api.lukach.io/geo/1.1.1.1
+      curl -X POST https://api.lukach.io/geo \
+        -H "Content-Type: application/json" \
+        -d '{"ips":["192.0.2.1","192.0.2.2"]}'
+
+      curl https://api.lukach.io/geo/198.51.100.111
 
       curl "https://api.lukach.io/geo/2001%3Adb8%3A%3A1"
 
