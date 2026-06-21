@@ -33,6 +33,7 @@ The API data plane is in us-east-2. Cross-region lookup from us-east-2 to us-eas
 - ACM DNS-validated certificate for `api.lukach.io`
 - Dual-stack API domain + dual-stack DNS records (`A` and `AAAA`)
 - Routes integrated to Lambda function `geo-search` in us-east-2
+- Routes integrated to Lambda function `mcp-service` in us-east-2
 
 ## API Routes
 
@@ -41,6 +42,8 @@ Base URL: `https://api.lukach.io`
 - `GET /geo`
 - `POST /geo`
 - `GET /geo/{ip}`
+- `ANY /mcp`
+- `ANY /mcp/{proxy+}`
 
 Examples:
 
@@ -86,10 +89,12 @@ cdk bootstrap aws://<aws-account-id>/us-west-2 --qualifier lukach --profile <you
 `ApiUse2` imports the target Lambda account ID from SSM parameter:
 
 - `/account/geo`
+- `/account/mcp`
 
 Expected Lambda ARN shape:
 
 - `arn:aws:lambda:us-east-2:<value-of-/account/geo>:function:geo-search`
+- `arn:aws:lambda:us-east-2:<value-of-/account/mcp>:function:mcp-service`
 
 Create this parameter before deploying `ApiUse2`.
 
@@ -153,6 +158,9 @@ Missing hosted zone parameter:
 
 Missing geo account parameter:
 - Ensure `/account/geo` exists and points to the account that owns Lambda `geo-search`.
+
+Missing mcp account parameter:
+- Ensure `/account/mcp` exists and points to the account that owns Lambda `mcp-service`.
 
 Dual-stack validation:
 - Confirm API domain is `DUAL_STACK` and Route53 has both `A` and `AAAA` alias records.

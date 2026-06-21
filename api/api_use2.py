@@ -160,6 +160,40 @@ class ApiUse2(Stack):
             integration = geointegration
         )
 
+    ### MCP SERVICE FUNCTION ###
+
+        mcpaccount = _ssm.StringParameter.from_string_parameter_attributes(
+            self, 'mcpaccount',
+            parameter_name = '/account/mcp'
+        )
+
+        mcp = _lambda.Function.from_function_attributes(
+            self, 'mcp',
+            function_arn = 'arn:aws:lambda:us-east-2:'+mcpaccount.string_value+':function:mcp-service',
+            same_environment = False,
+            skip_permissions = True
+        )
+
+        mcpintegration = _integrations.HttpLambdaIntegration(
+            'mcpintegration', mcp
+        )
+
+        api.add_routes(
+            path = '/mcp',
+            methods = [
+                _api.HttpMethod.ANY
+            ],
+            integration = mcpintegration
+        )
+
+        api.add_routes(
+            path = '/mcp/{proxy+}',
+            methods = [
+                _api.HttpMethod.ANY
+            ],
+            integration = mcpintegration
+        )
+
     ### DNS RECORDS
 
         ipv4dns = _route53.ARecord(
