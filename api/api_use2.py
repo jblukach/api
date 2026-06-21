@@ -125,6 +125,11 @@ class ApiUse2(Stack):
             throttling_burst_limit = 5
         )
 
+        api.default_stage.node.default_child.access_log_settings = _api.CfnStage.AccessLogSettingsProperty(
+            destination_arn = apilogs.log_group_arn,
+            format = '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}'
+        )
+
     ### GEOLITE FUNCTION ###
 
         geoaccount = _ssm.StringParameter.from_string_parameter_attributes(
@@ -175,7 +180,8 @@ class ApiUse2(Stack):
         )
 
         mcpintegration = _integrations.HttpLambdaIntegration(
-            'mcpintegration', mcp
+            'mcpintegration', mcp,
+            payload_format_version = _api.PayloadFormatVersion.VERSION_2_0
         )
 
         api.add_routes(
