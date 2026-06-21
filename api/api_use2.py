@@ -120,6 +120,11 @@ class ApiUse2(Stack):
             ip_address_type = _api.IpAddressType.DUAL_STACK
         )
 
+        api.default_stage.node.default_child.default_route_settings = _api.CfnStage.RouteSettingsProperty(
+            throttling_rate_limit = 2,
+            throttling_burst_limit = 5
+        )
+
     ### GEOLITE FUNCTION ###
 
         geoaccount = _ssm.StringParameter.from_string_parameter_attributes(

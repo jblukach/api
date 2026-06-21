@@ -1,127 +1,174 @@
 # API Ingress on AWS CDK
 
-This repository deploys a single-region API ingress in us-east-2 using Amazon API Gateway HTTP API with a custom domain and dual-stack DNS.
+This repository deploys `api.lukach.io` with AWS CDK using a multi-stack layout:
 
-## Current Architecture
+- `ApiStack` (us-east-2): GitHub OIDC provider and deployment IAM role.
+- `ApiUse1` (us-east-1): Route53 hosted zone and SSM parameter export for hosted zone ID.
+- `ApiUse2` (us-east-2): API Gateway HTTP API, ACM certificate, custom domain, and dual-stack DNS.
 
-The active data-plane region is us-east-2.
+The API data plane is in us-east-2. Cross-region lookup from us-east-2 to us-east-1 is used only to read the hosted zone ID parameter.
 
-Stack to region mapping in code:
+## Architecture
 
-- ApiStack: us-east-2
-- ApiUse1: us-east-1
-- ApiUse2: us-east-2
+### Region Mapping
 
-- ApiStack in us-east-2
-   - Creates GitHub OIDC/IAM deployment role and related permissions.
-- ApiUse2 in us-east-2
-   - Creates API Gateway HTTP API, ACM certificate, domain mapping, and Route53 A and AAAA alias records for api.lukach.io.
-   - Integrates route /geo with Lambda function geo-search in us-east-2.
-- ApiUse1 in us-east-1
-   - Supporting stack only: creates public hosted zone and stores hosted zone ID in SSM parameter /route53/apilukachio.
-   - ApiUse2 reads that parameter cross-region from us-east-1.
+- `ApiStack`: us-east-2
+- `ApiUse1`: us-east-1
+- `ApiUse2`: us-east-2
 
-This means request serving is single region us-east-2, while DNS source data is provisioned in us-east-1.
+### What Gets Created
 
-## API Endpoint
+`ApiStack`:
+- GitHub Actions OIDC identity provider (`token.actions.githubusercontent.com`)
+- IAM role trusted by `repo:jblukach/api:*`
+- CDK deployment permissions for CloudFormation, S3, KMS, IAM pass role, and SSM bootstrap version checks
 
-- Base domain: api.lukach.io
-- Routes:
-   - GET /geo
-   - POST /geo
-   - GET /geo/{ip}
+`ApiUse1`:
+- Public hosted zone: `api.lukach.io`
+- Route53 query log group: `/aws/route53/apilukachio`
+- SSM parameter: `/route53/apilukachio` (hosted zone ID)
 
-`/geo` accepts several search inputs:
+`ApiUse2`:
+- HTTP API with custom domain `api.lukach.io`
+- ACM DNS-validated certificate for `api.lukach.io`
+- Dual-stack API domain + dual-stack DNS records (`A` and `AAAA`)
+- Routes integrated to Lambda function `geo-search` in us-east-2
 
-- GET /geo with no IP uses the caller source IP.
-- GET /geo supports query-string lookups with `ip`, `ipAddress`, or `query`.
-- POST /geo supports a JSON body with `ip`, `ipAddress`, `query`, or `ips`.
-- GET /geo/{ip} supports a path-parameter lookup.
-- Repeated query params and comma-separated values are both accepted.
-- Bulk requests are capped by `MAX_IPS_PER_REQUEST`, which defaults to 300.
+## API Routes
 
-Example:
+Base URL: `https://api.lukach.io`
 
-      curl https://api.lukach.io/geo
+- `GET /geo`
+- `POST /geo`
+- `GET /geo/{ip}`
 
-      curl "https://api.lukach.io/geo?ip=192.0.2.1&ip=198.51.100.111&ip=2001%3Adb8%3A%3A1"
+Examples:
 
-      curl -X POST https://api.lukach.io/geo \
-        -H "Content-Type: application/json" \
-        -d '{"ips":["192.0.2.1","192.0.2.2"]}'
+```bash
+curl https://api.lukach.io/geo
 
-      curl https://api.lukach.io/geo/198.51.100.111
+curl "https://api.lukach.io/geo?ip=192.0.2.1&ip=198.51.100.111&ip=2001%3Adb8%3A%3A1"
 
-      curl "https://api.lukach.io/geo/2001%3Adb8%3A%3A1"
+curl -X POST https://api.lukach.io/geo \
+  -H "Content-Type: application/json" \
+  -d '{"ips":["192.0.2.1","192.0.2.2"]}'
 
-## IPv4 and IPv6
+curl https://api.lukach.io/geo/198.51.100.111
 
-The code configures dual-stack end to end:
+curl "https://api.lukach.io/geo/2001%3Adb8%3A%3A1"
+```
 
-- API Gateway domain uses DUAL_STACK IP address type.
-- Route53 publishes both A and AAAA alias records for api.lukach.io.
-- Both route forms work for IPv4 and IPv6. For path-style IPv6, URL-encode colons (`:`).
+For IPv6 path input, URL-encode colons (`:`).
 
 ## Prerequisites
 
-- AWS account with permissions to deploy CDK stacks.
-- Python 3.12 or newer.
-- AWS CDK CLI.
-- Authenticated AWS profile for deployment.
+- Python 3.12+
+- AWS CDK v2 CLI (`cdk --version`)
+- AWS credentials/profile with permissions to deploy all three stacks
+- CDK bootstrap with qualifier `lukach` in each deployed region
+
+The code references bootstrap execution roles with qualifier `lukach` in:
+
+- us-east-1
+- us-east-2
+- us-west-2
+
+Bootstrap example:
+
+```bash
+cdk bootstrap aws://<aws-account-id>/us-east-1 --qualifier lukach --profile <your-profile>
+cdk bootstrap aws://<aws-account-id>/us-east-2 --qualifier lukach --profile <your-profile>
+cdk bootstrap aws://<aws-account-id>/us-west-2 --qualifier lukach --profile <your-profile>
+```
+
+## Required External Dependency
+
+`ApiUse2` imports the target Lambda account ID from SSM parameter:
+
+- `/account/geo`
+
+Expected Lambda ARN shape:
+
+- `arn:aws:lambda:us-east-2:<value-of-/account/geo>:function:geo-search`
+
+Create this parameter before deploying `ApiUse2`.
 
 ## Deploy
 
-Account resolution behavior (from app.py):
+`app.py` resolves account in this order:
 
-- CDK_DEFAULT_ACCOUNT
-- CDK_DEPLOY_ACCOUNT
-- AWS_ACCOUNT_ID
-- CDK context account (use -c account=<aws-account-id>)
+- `CDK_DEFAULT_ACCOUNT`
+- `CDK_DEPLOY_ACCOUNT`
+- `AWS_ACCOUNT_ID`
+- CDK context value `account` (`-c account=<aws-account-id>`)
 
-If none of these are set, synth/deploy fails fast with an explicit error.
+If none are set, synth/deploy fails with an explicit error.
 
 1. Install dependencies.
 
-          pip install -r requirements.txt
+```bash
+pip install -r requirements.txt
+```
 
-2. Authenticate profile.
+2. Authenticate.
 
-          aws sso login --profile <your-profile>
+```bash
+aws sso login --profile <your-profile>
+```
 
 3. Synthesize.
 
-          cdk synth -c account=<aws-account-id>
+```bash
+cdk synth --profile <your-profile> -c account=<aws-account-id>
+```
 
 4. Review changes.
 
-          cdk diff ApiStack ApiUse1 ApiUse2 --profile <your-profile> -c account=<aws-account-id>
+```bash
+cdk diff ApiStack ApiUse1 ApiUse2 --profile <your-profile> -c account=<aws-account-id>
+```
 
-5. Deploy.
+5. Deploy all stacks.
 
-          cdk deploy --all --require-approval never --profile <your-profile> -c account=<aws-account-id>
+```bash
+cdk deploy --all --require-approval never --profile <your-profile> -c account=<aws-account-id>
+```
+
+Recommended first-time order (if deploying individually):
+
+1. `ApiStack`
+2. `ApiUse1`
+3. `ApiUse2`
 
 ## Troubleshooting
 
-- Unable to resolve AWS account to use
-   - Pass account context explicitly and use a valid profile:
+Unable to resolve AWS account:
 
-            cdk synth --profile <your-profile> -c account=<aws-account-id>
+```bash
+cdk synth --profile <your-profile> -c account=<aws-account-id>
+```
 
-- Hosted zone parameter region mismatch
-   - Parameter /route53/apilukachio is intentionally read from us-east-1 by ApiUse2.
+Missing hosted zone parameter:
+- Ensure `ApiUse1` has been deployed and `/route53/apilukachio` exists in us-east-1.
 
-- Dual-stack check
-   - Confirm API Gateway domain is DUAL_STACK and Route53 has both A and AAAA alias records.
+Missing geo account parameter:
+- Ensure `/account/geo` exists and points to the account that owns Lambda `geo-search`.
+
+Dual-stack validation:
+- Confirm API domain is `DUAL_STACK` and Route53 has both `A` and `AAAA` alias records.
 
 ## Project Structure
 
-      api/
-      ├── api/
-      │   ├── api_stack.py
-      │   ├── api_use1.py
-      │   └── api_use2.py
-      ├── .github/workflows/
-      │   └── api.yaml
-      ├── app.py
-      ├── cdk.json
-      └── requirements.txt
+```text
+.
+├── api/
+│   ├── __init__.py
+│   ├── api_stack.py
+│   ├── api_use1.py
+│   └── api_use2.py
+├── app.py
+├── cdk.json
+├── LICENSE
+├── README.md
+└── requirements.txt
+```
