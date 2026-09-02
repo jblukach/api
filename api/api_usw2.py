@@ -16,7 +16,7 @@ from aws_cdk import (
 
 from constructs import Construct
 
-class ApiUse2(Stack):
+class ApiUsw2(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -70,11 +70,14 @@ class ApiUse2(Stack):
             zone_name = 'api.lukach.io'
         )
 
-    ### ACM CERTIFICATE (DEV, no apex) ###
+    ### ACM CERTIFICATE ###
 
         acm = _acm.Certificate(
             self, 'acm',
-            domain_name = 'use2.api.lukach.io',
+            domain_name = 'api.lukach.io',
+            subject_alternative_names = [
+                'usw2.api.lukach.io'
+            ],
             validation = _acm.CertificateValidation.from_dns(hostzone)
         )
 
@@ -82,7 +85,15 @@ class ApiUse2(Stack):
 
         domain = _api.DomainName(
             self, 'domain',
-            domain_name = 'use2.api.lukach.io',
+            domain_name = 'api.lukach.io',
+            certificate = acm,
+            endpoint_type = _api.EndpointType.REGIONAL,
+            ip_address_type = _api.IpAddressType.DUAL_STACK
+        )
+
+        regional = _api.DomainName(
+            self, 'regional',
+            domain_name = 'usw2.api.lukach.io',
             certificate = acm,
             endpoint_type = _api.EndpointType.REGIONAL,
             ip_address_type = _api.IpAddressType.DUAL_STACK
@@ -114,10 +125,10 @@ class ApiUse2(Stack):
 
         api = _api.HttpApi(
             self, 'api',
-            api_name = 'use2.api.lukach.io',
-            description = 'use2.api.lukach.io',
+            api_name = 'usw2.api.lukach.io',
+            description = 'usw2.api.lukach.io',
             default_domain_mapping = _api.DomainMappingOptions(
-                domain_name = domain
+                domain_name = regional
             ),
             cors_preflight = _api.CorsPreflightOptions(
                 allow_headers = [
@@ -150,6 +161,15 @@ class ApiUse2(Stack):
         api.default_stage.node.default_child.access_log_settings = _api.CfnStage.AccessLogSettingsProperty(
             destination_arn = apilogs.log_group_arn,
             format = '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}'
+        )
+
+    ### APEX DOMAIN MAPPING ###
+
+        _api.ApiMapping(
+            self, 'apexmapping',
+            api = api,
+            domain_name = domain,
+            stage = api.default_stage
         )
 
     ### HEALTH FUNCTION ###
@@ -279,16 +299,16 @@ class ApiUse2(Stack):
             value = 'arn:aws:execute-api:'+region+':'+account+':'+api.api_id+'/*/*/mcp*'
         )
 
-    ### DNS RECORDS
+    ### DNS RECORDS ###
 
         _route53.ARecord(
             self, 'ipv4dns',
             zone = hostzone,
-            record_name = 'use2.api.lukach.io',
+            record_name = 'usw2.api.lukach.io',
             target = _route53.RecordTarget.from_alias(
                 _r53targets.ApiGatewayv2DomainProperties(
-                    domain.regional_domain_name,
-                    domain.regional_hosted_zone_id
+                    regional.regional_domain_name,
+                    regional.regional_hosted_zone_id
                 )
             )
         )
@@ -296,11 +316,41 @@ class ApiUse2(Stack):
         _route53.AaaaRecord(
             self, 'ipv6dns',
             zone = hostzone,
-            record_name = 'use2.api.lukach.io',
+            record_name = 'usw2.api.lukach.io',
             target = _route53.RecordTarget.from_alias(
                 _r53targets.ApiGatewayv2DomainProperties(
-                    domain.regional_domain_name,
-                    domain.regional_hosted_zone_id
+                    regional.regional_domain_name,
+                    regional.regional_hosted_zone_id
                 )
+            )
+        )
+
+    ### APEX FAILOVER DNS (SECONDARY) ###
+
+        _route53.CfnRecordSet(
+            self, 'apexipv4dns',
+            hosted_zone_id = hostzone_id,
+            name = 'api.lukach.io',
+            type = 'A',
+            failover = 'SECONDARY',
+            set_identifier = 'usw2',
+            alias_target = _route53.CfnRecordSet.AliasTargetProperty(
+                dns_name = domain.regional_domain_name,
+                hosted_zone_id = domain.regional_hosted_zone_id,
+                evaluate_target_health = False
+            )
+        )
+
+        _route53.CfnRecordSet(
+            self, 'apexipv6dns',
+            hosted_zone_id = hostzone_id,
+            name = 'api.lukach.io',
+            type = 'AAAA',
+            failover = 'SECONDARY',
+            set_identifier = 'usw2',
+            alias_target = _route53.CfnRecordSet.AliasTargetProperty(
+                dns_name = domain.regional_domain_name,
+                hosted_zone_id = domain.regional_hosted_zone_id,
+                evaluate_target_health = False
             )
         )

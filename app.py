@@ -6,6 +6,7 @@ import aws_cdk as cdk
 from api.api_stack import ApiStack
 from api.api_use1 import ApiUse1
 from api.api_use2 import ApiUse2
+from api.api_usw2 import ApiUsw2
 
 app = cdk.App()
 
@@ -56,6 +57,17 @@ ApiUse2(
     env = cdk.Environment(
         account = account,
         region = 'us-east-2'
+    ),
+    synthesizer = cdk.DefaultStackSynthesizer(
+        qualifier = 'lukach'
+    )
+)
+
+ApiUsw2(
+    app, "ApiUsw2",
+    env = cdk.Environment(
+        account = account,
+        region = 'us-west-2'
     ),
     synthesizer = cdk.DefaultStackSynthesizer(
         qualifier = 'lukach'
