@@ -167,7 +167,8 @@ class ApiUse2(Stack):
                 "        'statusCode': 200,\n"
                 "        'body': json.dumps(os.environ['AWS_REGION'])\n"
                 "    }\n"
-            )
+            ),
+            reserved_concurrent_executions = 5
         )
 
         healthintegration = _integrations.HttpLambdaIntegration(
