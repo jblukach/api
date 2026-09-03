@@ -81,7 +81,7 @@ curl https://api.lukach.io/geo/198.51.100.111
 curl "https://api.lukach.io/geo/2001%3Adb8%3A%3A1"
 ```
 
-For IPv6 path input, URL-encode colons (`:`). For POST input, send `Content-Type: application/json` with either an `ip` string or an `ips` array.
+For IPv6 path input, URL-encode colons (`:`). Query values for `ip` may be repeated or comma-separated. For POST input, send `Content-Type: application/json` with either an `ip` string or an `ips` array. `GET /geo` without an IP looks up the request source address.
 
 MCP routes for [`jblukach/mcp`](https://github.com/jblukach/mcp):
 
@@ -101,13 +101,15 @@ curl "https://api.lukach.io/mcp?endpoint=geo"
 MCP JSON-RPC clients must send an `Accept` header that includes both JSON and server-sent events:
 
 ```bash
-curl -X POST "https://api.lukach.io/mcp?endpoint=geo" \
+curl -X POST "https://api.lukach.io/mcp" \
   -H "Accept: application/json, text/event-stream" \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl-probe","version":"1.0.0"}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl-probe","version":"1.0.0"}}}'
 ```
 
-API Gateway handles CORS preflight for browser clients. Allowed request headers include `accept`, `content-type`, and `mcp-session-id`; exposed response headers include `cache-control`, `content-type`, and `mcp-session-id`.
+The `endpoint` query parameter applies to plain `GET /mcp` discovery only; MCP JSON-RPC clients post to `/mcp` without it.
+
+API Gateway handles CORS preflight for browser clients. Allowed request headers include `accept`, `content-type`, `mcp-protocol-version`, and `mcp-session-id`; exposed response headers include `cache-control`, `content-type`, `mcp-protocol-version`, and `mcp-session-id`. Allowed methods are `DELETE`, `GET`, `POST`, and `OPTIONS`.
 
 ## Prerequisites
 
@@ -264,7 +266,7 @@ MCP JSON-RPC returns `406 Not Acceptable`:
 - Include `Accept: application/json, text/event-stream` on MCP JSON-RPC requests.
 
 Browser clients fail CORS preflight:
-- Confirm the deployed HTTP API includes CORS preflight for `GET`, `POST`, and `OPTIONS`, and allows `accept`, `content-type`, and `mcp-session-id` request headers.
+- Confirm the deployed HTTP API includes CORS preflight for `DELETE`, `GET`, `POST`, and `OPTIONS`, and allows `accept`, `content-type`, `mcp-protocol-version`, and `mcp-session-id` request headers.
 
 Dual-stack validation:
 - Confirm API domain is `DUAL_STACK` and Route53 has both `A` and `AAAA` alias records.
@@ -290,9 +292,19 @@ for base in \
   curl -X OPTIONS "$base/mcp" \
     -H "Origin: https://example.com" \
     -H "Access-Control-Request-Method: POST" \
-    -H "Access-Control-Request-Headers: accept,content-type,mcp-session-id"
+    -H "Access-Control-Request-Headers: accept,content-type,mcp-protocol-version,mcp-session-id"
 done
 ```
+
+## Tests
+
+The suite synthesizes each stack and asserts the CloudFormation template, so it needs no AWS credentials.
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+It covers the geo and MCP route keys, payload format 2.0 integrations, CORS headers and methods, stage throttling and access logging, dual-stack domains, the Route 53 primary/secondary failover records and health check, the Lambda permission source-ARN outputs, and the GitHub OIDC role trust scope.
 
 ## Project Structure
 
@@ -304,6 +316,8 @@ done
 │   ├── api_use1.py
 │   ├── api_use2.py
 │   └── api_usw2.py
+├── tests/
+│   └── test_stacks.py
 ├── app.py
 ├── cdk.json
 ├── LICENSE

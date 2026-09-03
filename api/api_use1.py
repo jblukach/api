@@ -134,9 +134,11 @@ class ApiUse1(Stack):
                 allow_headers = [
                     'accept',
                     'content-type',
+                    'mcp-protocol-version',
                     'mcp-session-id'
                 ],
                 allow_methods = [
+                    _api.CorsHttpMethod.DELETE,
                     _api.CorsHttpMethod.GET,
                     _api.CorsHttpMethod.POST,
                     _api.CorsHttpMethod.OPTIONS
@@ -147,6 +149,7 @@ class ApiUse1(Stack):
                 expose_headers = [
                     'cache-control',
                     'content-type',
+                    'mcp-protocol-version',
                     'mcp-session-id'
                 ]
             ),
